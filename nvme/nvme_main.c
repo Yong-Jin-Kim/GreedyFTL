@@ -59,6 +59,7 @@
 #include "xil_printf.h"
 #include "debug.h"
 #include "io_access.h"
+#include "xtime_l.h"
 
 #include "nvme.h"
 #include "host_lld.h"
@@ -68,12 +69,15 @@
 
 #include "../memory_map.h"
 
+
+
 volatile NVME_CONTEXT g_nvmeTask;
 
 void nvme_main()
 {
 	unsigned int exeLlr;
 	unsigned int rstCnt = 0;
+	XTime timeTickStart, timeTickEnd;
 
 	xil_printf("!!! Wait until FTL reset complete !!! \r\n");
 
@@ -86,20 +90,7 @@ void nvme_main()
 	{
 		exeLlr = 1;
 
-
-		if(g_nvmeTask.status == NVME_TASK_WAIT_CC_EN)
-		{
-			unsigned int ccEn;
-			ccEn = check_nvme_cc_en();
-			if(ccEn == 1)
-			{
-				set_nvme_admin_queue(1, 1, 1);
-				set_nvme_csts_rdy(1);
-				g_nvmeTask.status = NVME_TASK_RUNNING;
-				xil_printf("\r\nNVMe ready!!!\r\n");
-			}
-		}
-		else if(g_nvmeTask.status == NVME_TASK_RUNNING)
+		if(g_nvmeTask.status == NVME_TASK_RUNNING)
 		{
 			NVME_COMMAND nvmeCmd;
 			unsigned int cmdValid;
@@ -116,6 +107,32 @@ void nvme_main()
 					ReqTransSliceToLowLevel();
 					exeLlr=0;
 				}
+			}
+
+			// SP: update current tick
+			XTime_GetTime(&timeTickEnd);
+
+			if (INTERNAL_FLUSH_PERIOD_MS == GET_TIME_MS(timeTickStart, timeTickEnd))
+			{
+				FlushWriteDataToNand();
+
+				// SP: update start tick
+				XTime_GetTime(&timeTickStart);
+			}
+		}
+		else if(g_nvmeTask.status == NVME_TASK_WAIT_CC_EN)
+		{
+			unsigned int ccEn;
+			ccEn = check_nvme_cc_en();
+			if(ccEn == 1)
+			{
+				set_nvme_admin_queue(1, 1, 1);
+				set_nvme_csts_rdy(1);
+				g_nvmeTask.status = NVME_TASK_RUNNING;
+				xil_printf("\r\nNVMe ready!!!\r\n");
+
+				// SP: get timeTickStart for internal flush
+				XTime_GetTime(&timeTickStart);
 			}
 		}
 		else if(g_nvmeTask.status == NVME_TASK_SHUTDOWN)

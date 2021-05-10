@@ -189,6 +189,68 @@ void EvictDataBufEntry(unsigned int originReqSlotTag)
 	}
 }
 
+void FlushWriteDataToNand(void)
+{
+	SyncAllLowLevelReqDone();
+
+	unsigned int reqSlotTag;
+	unsigned int virtualSliceAddr;
+
+	for(unsigned int entryIteration = 0; entryIteration < AVAILABLE_DATA_BUFFER_ENTRY_COUNT; entryIteration++)
+	{
+		if(dataBufMapPtr->dataBuf[entryIteration].dirty == DATA_BUF_DIRTY)
+		{
+			// Put to the Tail of LRU list
+			if(entryIteration != dataBufLruList.tailEntry)
+			{
+				if(dataBufMapPtr->dataBuf[entryIteration].prevEntry != DATA_BUF_NONE)
+				{
+					dataBufMapPtr->dataBuf[dataBufMapPtr->dataBuf[entryIteration].prevEntry].nextEntry = dataBufMapPtr->dataBuf[entryIteration].nextEntry;
+				}
+
+				if(dataBufMapPtr->dataBuf[entryIteration].nextEntry != DATA_BUF_NONE)
+				{
+					dataBufMapPtr->dataBuf[dataBufMapPtr->dataBuf[entryIteration].nextEntry].prevEntry = dataBufMapPtr->dataBuf[entryIteration].prevEntry;
+				}
+
+				dataBufMapPtr->dataBuf[dataBufLruList.tailEntry].nextEntry = entryIteration;
+				dataBufMapPtr->dataBuf[entryIteration].prevEntry = dataBufLruList.tailEntry;
+				dataBufLruList.tailEntry = entryIteration;
+			}
+
+			// Update Hash List
+			SelectiveGetFromDataBufHashList(entryIteration);
+
+			// Generate NandRequest
+			reqSlotTag = GetFromFreeReqQ();
+			virtualSliceAddr = AddrTransWrite(dataBufMapPtr->dataBuf[entryIteration].logicalSliceAddr);
+
+			reqPoolPtr->reqPool[reqSlotTag].reqType = REQ_TYPE_NAND;
+			reqPoolPtr->reqPool[reqSlotTag].reqCode = REQ_CODE_WRITE;
+			//reqPoolPtr->reqPool[reqSlotTag].nvmeCmdSlotTag = cmdSlotTag; // SP: need to check correct setting always
+			reqPoolPtr->reqPool[reqSlotTag].logicalSliceAddr = dataBufMapPtr->dataBuf[entryIteration].logicalSliceAddr;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.dataBufFormat = REQ_OPT_DATA_BUF_ENTRY;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.nandAddr = REQ_OPT_NAND_ADDR_VSA;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.nandEcc = REQ_OPT_NAND_ECC_ON;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.nandEccWarning = REQ_OPT_NAND_ECC_WARNING_ON;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.rowAddrDependencyCheck = REQ_OPT_ROW_ADDR_DEPENDENCY_CHECK;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.blockSpace = REQ_OPT_BLOCK_SPACE_MAIN;
+			reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry = entryIteration;
+
+			UpdateDataBufEntryInfoBlockingReq(entryIteration, reqSlotTag);
+
+			reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr = virtualSliceAddr;
+
+			SelectLowLevelReqQ(reqSlotTag);
+
+			dataBufMapPtr->dataBuf[entryIteration].dirty = DATA_BUF_CLEAN;
+		}
+	}
+
+	SyncAllLowLevelReqDone();
+}
+
+
 void DataReadFromNand(unsigned int originReqSlotTag)
 {
 	unsigned int reqSlotTag, virtualSliceAddr;

@@ -48,6 +48,11 @@
 #ifndef __NVME_MAIN_H_
 #define __NVME_MAIN_H_
 
+// SP: temp code,
+#define INTERNAL_FLUSH_PERIOD_MS	(1000) // 1sec
+
+#define GET_TIME_MS(start, end)		(1000*(end-start)/COUNTS_PER_SECOND)
+
 void nvme_main();
 
 #endif	//__NVME_MAIN_H_

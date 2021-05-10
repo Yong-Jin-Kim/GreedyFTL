@@ -82,6 +82,7 @@ void ReqTransSliceToLowLevel();
 void IssueNvmeDmaReq(unsigned int reqSlotTag);
 void CheckDoneNvmeDmaReq();
 void EvictDataBufEntry(unsigned int originReqSlotTag);
+void FlushWriteDataToNand(void);
 
 void SelectLowLevelReqQ(unsigned int reqSlotTag);
 void ReleaseBlockedByBufDepReq(unsigned int reqSlotTag);
