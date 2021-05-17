@@ -164,6 +164,17 @@ typedef struct _SSD_REQ_FORMAT
 	NVME_DMA_INFO nvmeDmaInfo;
 	NAND_INFO nandInfo;
 
+#if (SUPPORT_BARRIER_FTL == 1)
+	struct {
+		unsigned short stream_id2;			// SP: only set if double stream, else 0
+		unsigned short stream_id1;
+		unsigned short epoch_id2;			// SP: only set if double stream, else 0
+		unsigned short epoch_id1;
+	};
+	unsigned short barrier_flag1;
+	unsigned short barrier_flag2;
+#endif
+
 	unsigned int prevReq : 16;
 	unsigned int nextReq : 16;
 	unsigned int prevBlockingReq : 16;

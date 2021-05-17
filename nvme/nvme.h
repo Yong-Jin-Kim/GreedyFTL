@@ -51,6 +51,9 @@
 #ifndef __NVME_H_
 #define __NVME_H_
 
+// SP: refactoring this
+#define SUPPORT_BARRIER_FTL			(1)
+
 #define MAX_NUM_OF_IO_SQ	8
 #define MAX_NUM_OF_IO_CQ	8
 
@@ -258,7 +261,16 @@ typedef struct _NVME_IO_COMMAND
 				unsigned short CID;
 			};
 			unsigned int NSID;
+#if (SUPPORT_BARRIER_FTL == 1)
+			struct {
+				unsigned short stream_id2;			// SP: only set if double stream, else 0
+				unsigned short stream_id1;
+				unsigned short epoch_id2;			// SP: only set if double stream, else 0
+				unsigned short epoch_id1;
+			};
+#else
 			unsigned int reserved1[2];
+#endif //#if (SUPPORT_BARRIER_FTL == 1)
 			unsigned int MPTR[2];
 			unsigned int PRP1[2];
 			unsigned int PRP2[2];
@@ -681,7 +693,13 @@ typedef struct _IO_WRITE_COMMAND_DW12
 		unsigned int dword;
 		struct {
 			unsigned short NLB;
+#if (SUPPORT_BARRIER_FTL == 1)
+			unsigned short barrier_flag2			:1;			// SP: be set this flag if barrier write of stream id 2
+			unsigned short barrier_flag1			:1;			// SP: be set this flag if barrier write of stream id 1
+			unsigned short reserved0				:8;
+#else
 			unsigned short reserved0				:10;
+#endif //#if (SUPPORT_BARRIER_FTL == 1)
 			unsigned short PRINFO					:4;
 			unsigned short FUA						:1;
 			unsigned short LR						:1;

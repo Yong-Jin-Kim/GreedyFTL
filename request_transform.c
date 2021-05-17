@@ -75,6 +75,97 @@ void InitDependencyTable()
 	}
 }
 
+#if (SUPPORT_BARRIER_FTL == 1)
+void ReqTransNvmeToSliceForWrite(unsigned int cmdSlotTag, NVME_IO_COMMAND *nvmeIOCmd)
+{
+	unsigned int reqSlotTag, requestedNvmeBlock, tempNumOfNvmeBlock, transCounter, tempLsa, loop, nvmeBlockOffset, nvmeDmaStartIndex;
+
+	IO_WRITE_COMMAND_DW12 cdw12;
+
+	cdw12.dword = nvmeIOCmd->dword12;
+
+	requestedNvmeBlock = cdw12.NLB + 1;
+	transCounter = 0;
+	nvmeDmaStartIndex = 0;
+	tempLsa = nvmeIOCmd->dword10 / NVME_BLOCKS_PER_SLICE; // if 2TB over, start lba high(dw11) is included
+	loop = ((nvmeIOCmd->dword10 % NVME_BLOCKS_PER_SLICE) + requestedNvmeBlock) / NVME_BLOCKS_PER_SLICE;
+
+	//first transform
+	nvmeBlockOffset = (nvmeIOCmd->dword10 % NVME_BLOCKS_PER_SLICE);
+	if(loop)
+		tempNumOfNvmeBlock = NVME_BLOCKS_PER_SLICE - nvmeBlockOffset;
+	else
+		tempNumOfNvmeBlock = requestedNvmeBlock;
+
+	reqSlotTag = GetFromFreeReqQ();
+
+	SSD_REQ_FORMAT sliceEntry;
+
+	memset((void*)&sliceEntry, 0x00, sizeof(SSD_REQ_FORMAT));
+
+	sliceEntry.reqType = REQ_TYPE_SLICE;
+	sliceEntry.reqCode = REQ_CODE_WRITE;
+	sliceEntry.nvmeCmdSlotTag = cmdSlotTag;
+	sliceEntry.logicalSliceAddr = tempLsa;
+	sliceEntry.nvmeDmaInfo.startIndex = nvmeDmaStartIndex;
+	sliceEntry.nvmeDmaInfo.nvmeBlockOffset = nvmeBlockOffset;
+	sliceEntry.nvmeDmaInfo.numOfNvmeBlock = tempNumOfNvmeBlock;
+
+	sliceEntry.stream_id1 = nvmeIOCmd->stream_id1;
+	sliceEntry.stream_id2 = nvmeIOCmd->stream_id2;
+	sliceEntry.epoch_id1 = nvmeIOCmd->epoch_id1;
+	sliceEntry.epoch_id2 = nvmeIOCmd->epoch_id2;
+
+	memcpy((void*)&reqPoolPtr->reqPool[reqSlotTag], (void*)&sliceEntry, sizeof(SSD_REQ_FORMAT));
+	PutToSliceReqQ(reqSlotTag);
+
+	tempLsa++;
+	transCounter++;
+	nvmeDmaStartIndex += tempNumOfNvmeBlock;
+
+	//transform continue
+	while(transCounter < loop)
+	{
+		nvmeBlockOffset = 0;
+		tempNumOfNvmeBlock = NVME_BLOCKS_PER_SLICE;
+
+		reqSlotTag = GetFromFreeReqQ();
+
+		sliceEntry.logicalSliceAddr = tempLsa;
+		sliceEntry.nvmeDmaInfo.startIndex = nvmeDmaStartIndex;
+		sliceEntry.nvmeDmaInfo.nvmeBlockOffset = nvmeBlockOffset;
+		sliceEntry.nvmeDmaInfo.numOfNvmeBlock = tempNumOfNvmeBlock;
+
+		memcpy((void*)&reqPoolPtr->reqPool[reqSlotTag], (void*)&sliceEntry, sizeof(SSD_REQ_FORMAT));
+
+		PutToSliceReqQ(reqSlotTag);
+
+		tempLsa++;
+		transCounter++;
+		nvmeDmaStartIndex += tempNumOfNvmeBlock;
+	}
+
+	//last transform
+	nvmeBlockOffset = 0;
+	tempNumOfNvmeBlock = (nvmeIOCmd->dword10 + requestedNvmeBlock) % NVME_BLOCKS_PER_SLICE;
+	if((tempNumOfNvmeBlock == 0) || (loop == 0))
+		return ;
+
+	reqSlotTag = GetFromFreeReqQ();
+
+	sliceEntry.logicalSliceAddr = tempLsa;
+	sliceEntry.nvmeDmaInfo.startIndex = nvmeDmaStartIndex;
+	sliceEntry.nvmeDmaInfo.nvmeBlockOffset = nvmeBlockOffset;
+	sliceEntry.nvmeDmaInfo.numOfNvmeBlock = tempNumOfNvmeBlock;
+	sliceEntry.barrier_flag1 = cdw12.barrier_flag1;
+	sliceEntry.barrier_flag2 = cdw12.barrier_flag2;
+
+	memcpy((void*)&reqPoolPtr->reqPool[reqSlotTag], (void*)&sliceEntry, sizeof(SSD_REQ_FORMAT));
+
+	PutToSliceReqQ(reqSlotTag);
+}
+#endif
+
 void ReqTransNvmeToSlice(unsigned int cmdSlotTag, unsigned int startLba, unsigned int nlb, unsigned int cmdCode)
 {
 	unsigned int reqSlotTag, requestedNvmeBlock, tempNumOfNvmeBlock, transCounter, tempLsa, loop, nvmeBlockOffset, nvmeDmaStartIndex, reqCode;
@@ -188,6 +279,85 @@ void EvictDataBufEntry(unsigned int originReqSlotTag)
 		dataBufMapPtr->dataBuf[dataBufEntry].dirty = DATA_BUF_CLEAN;
 	}
 }
+
+void FlushWriteDataToNand2(unsigned int stream_id, unsigned int epoch_id)
+{
+	SyncAllLowLevelReqDone();
+
+	unsigned int reqSlotTag;
+	unsigned int virtualSliceAddr;
+
+	unsigned int needToFlush;
+
+	for(unsigned int entryIteration = 0; entryIteration < AVAILABLE_DATA_BUFFER_ENTRY_COUNT; entryIteration++)
+	{
+		needToFlush = 0;
+
+		if ((dataBufMapPtr->dataBuf[entryIteration].stream_id1 == stream_id)
+				&& (dataBufMapPtr->dataBuf[entryIteration].epoch_id1 == epoch_id))
+		{
+			needToFlush = 1;
+		}
+		else if ((dataBufMapPtr->dataBuf[entryIteration].stream_id2 == stream_id)
+				&& (dataBufMapPtr->dataBuf[entryIteration].epoch_id2 == epoch_id))
+		{
+			needToFlush = 1;
+		}
+
+		if ((dataBufMapPtr->dataBuf[entryIteration].dirty == DATA_BUF_DIRTY)
+				&&(1 == needToFlush))
+		{
+			if ((dataBufMapPtr->dataBuf[entryIteration].dirty == DATA_BUF_DIRTY))
+			// Put to the Tail of LRU list
+			if(entryIteration != dataBufLruList.tailEntry)
+			{
+				if(dataBufMapPtr->dataBuf[entryIteration].prevEntry != DATA_BUF_NONE)
+				{
+					dataBufMapPtr->dataBuf[dataBufMapPtr->dataBuf[entryIteration].prevEntry].nextEntry = dataBufMapPtr->dataBuf[entryIteration].nextEntry;
+				}
+
+				if(dataBufMapPtr->dataBuf[entryIteration].nextEntry != DATA_BUF_NONE)
+				{
+					dataBufMapPtr->dataBuf[dataBufMapPtr->dataBuf[entryIteration].nextEntry].prevEntry = dataBufMapPtr->dataBuf[entryIteration].prevEntry;
+				}
+
+				dataBufMapPtr->dataBuf[dataBufLruList.tailEntry].nextEntry = entryIteration;
+				dataBufMapPtr->dataBuf[entryIteration].prevEntry = dataBufLruList.tailEntry;
+				dataBufLruList.tailEntry = entryIteration;
+			}
+
+			// Update Hash List
+			SelectiveGetFromDataBufHashList(entryIteration);
+
+			// Generate NandRequest
+			reqSlotTag = GetFromFreeReqQ();
+			virtualSliceAddr = AddrTransWrite(dataBufMapPtr->dataBuf[entryIteration].logicalSliceAddr);
+
+			reqPoolPtr->reqPool[reqSlotTag].reqType = REQ_TYPE_NAND;
+			reqPoolPtr->reqPool[reqSlotTag].reqCode = REQ_CODE_WRITE;
+			//reqPoolPtr->reqPool[reqSlotTag].nvmeCmdSlotTag = cmdSlotTag; // SP: need to check correct setting always
+			reqPoolPtr->reqPool[reqSlotTag].logicalSliceAddr = dataBufMapPtr->dataBuf[entryIteration].logicalSliceAddr;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.dataBufFormat = REQ_OPT_DATA_BUF_ENTRY;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.nandAddr = REQ_OPT_NAND_ADDR_VSA;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.nandEcc = REQ_OPT_NAND_ECC_ON;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.nandEccWarning = REQ_OPT_NAND_ECC_WARNING_ON;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.rowAddrDependencyCheck = REQ_OPT_ROW_ADDR_DEPENDENCY_CHECK;
+			reqPoolPtr->reqPool[reqSlotTag].reqOpt.blockSpace = REQ_OPT_BLOCK_SPACE_MAIN;
+			reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry = entryIteration;
+
+			UpdateDataBufEntryInfoBlockingReq(entryIteration, reqSlotTag);
+
+			reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr = virtualSliceAddr;
+
+			SelectLowLevelReqQ(reqSlotTag);
+
+			dataBufMapPtr->dataBuf[entryIteration].dirty = DATA_BUF_CLEAN;
+		}
+	}
+
+	SyncAllLowLevelReqDone();
+}
+
 
 void FlushWriteDataToNand(void)
 {
@@ -322,6 +492,12 @@ void ReqTransSliceToLowLevel()
 		if(reqPoolPtr->reqPool[reqSlotTag].reqCode  == REQ_CODE_WRITE)
 		{
 			dataBufMapPtr->dataBuf[dataBufEntry].dirty = DATA_BUF_DIRTY;
+#if (SUPPROT_BARRIER_FTL == 1)
+			dataBufMapPtr->dataBuf[dataBufEntry].stream_id1 = reqPoolPtr->reqPool[reqSlotTag].stream_id1;
+			dataBufMapPtr->dataBuf[dataBufEntry].stream_id2 = reqPoolPtr->reqPool[reqSlotTag].stream_id2;
+			dataBufMapPtr->dataBuf[dataBufEntry].epoch_id1 = reqPoolPtr->reqPool[reqSlotTag].epoch_id1;
+			dataBufMapPtr->dataBuf[dataBufEntry].epoch_id2 = reqPoolPtr->reqPool[reqSlotTag].epoch_id2;
+#endif
 			reqPoolPtr->reqPool[reqSlotTag].reqCode = REQ_CODE_RxDMA;
 		}
 		else if(reqPoolPtr->reqPool[reqSlotTag].reqCode  == REQ_CODE_READ)

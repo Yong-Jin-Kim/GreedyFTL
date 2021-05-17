@@ -69,6 +69,13 @@ typedef struct _DATA_BUF_ENTRY {
 	unsigned int hashNextEntry : 16;
 	unsigned int dirty : 1;
 	unsigned int reserved0 : 15;
+
+#if (SUPPORT_BARRIER_FTL == 1)
+	unsigned short stream_id2;
+	unsigned short stream_id1;
+	unsigned short epoch_id2;
+	unsigned short epoch_id1;
+#endif //#if (SUPPORT_BARRIER_FTL == 1)
 } DATA_BUF_ENTRY, *P_DATA_BUF_ENTRY;
 
 typedef struct _DATA_BUF_MAP{

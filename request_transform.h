@@ -77,11 +77,15 @@ typedef struct _ROW_ADDR_DEPENDENCY_TABLE {
 } ROW_ADDR_DEPENDENCY_TABLE, *P_ROW_ADDR_DEPENDENCY_TABLE;
 
 void InitDependencyTable();
+#if (SUPPORT_BARRIER_FTL == 1)
+void ReqTransNvmeToSliceForWrite(unsigned int cmdSlotTag, NVME_IO_COMMAND *nvmeIOCmd);
+#endif
 void ReqTransNvmeToSlice(unsigned int cmdSlotTag, unsigned int startLba, unsigned int nlb, unsigned int cmdCode);
 void ReqTransSliceToLowLevel();
 void IssueNvmeDmaReq(unsigned int reqSlotTag);
 void CheckDoneNvmeDmaReq();
 void EvictDataBufEntry(unsigned int originReqSlotTag);
+void FlushWriteDataToNand2(unsigned int stream_id, unsigned int epoch_id);
 void FlushWriteDataToNand(void);
 
 void SelectLowLevelReqQ(unsigned int reqSlotTag);

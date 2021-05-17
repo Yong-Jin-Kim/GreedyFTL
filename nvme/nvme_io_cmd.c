@@ -109,6 +109,19 @@ static void _handle_nvme_io_write(unsigned int cmdSlotTag, NVME_IO_COMMAND *nvme
 	//if(writeInfo12.FUA == 1)
 	//	xil_printf("write FUA\r\n");
 
+#if (SUPPORT_BARRIER_FTL == 1)
+	if (TRUE == writeInfo12.barrier_flag1)
+	{
+		// SP: need to flush current epoch data of stream 1 after dma of this command
+		// nvmeIOCmd->stream_id1, nvmeIOCmd->epoch_id1
+	}
+	if (TRUE == writeInfo12.barrier_flag2)
+	{
+		// SP: need to flush current epoch data of stream 2 after dma of this command
+		// nvmeIOCmd->stream_id2, nvmeIOCmd->epoch_id2
+	}
+#endif //#if (SUPPORT_BARRIER_FTL == 1)
+
 	startLba[0] = nvmeIOCmd->dword[10];
 	startLba[1] = nvmeIOCmd->dword[11];
 	nlb = writeInfo12.NLB;
@@ -118,7 +131,14 @@ static void _handle_nvme_io_write(unsigned int cmdSlotTag, NVME_IO_COMMAND *nvme
 	ASSERT((nvmeIOCmd->PRP1[0] & 0xF) == 0 && (nvmeIOCmd->PRP2[0] & 0xF) == 0);
 	ASSERT(nvmeIOCmd->PRP1[1] < 0x10000 && nvmeIOCmd->PRP2[1] < 0x10000);
 
+#if (SUPPORT_BARRIER_FTL == 1)
+	// TODO:
+	// adding parameter stream_ids, epoch_ids into request slice
+	// adding parameter stream_ids, epoch_ids into data buffer entry
+	ReqTransNvmeToSliceForWrite(cmdSlotTag, nvmeIOCmd);
+#else
 	ReqTransNvmeToSlice(cmdSlotTag, startLba[0], nlb, IO_NVM_WRITE);
+#endif
 }
 
 static void _handle_nvme_io_flush(unsigned int cmdSlotTag)
