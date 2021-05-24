@@ -104,7 +104,7 @@ void barrier_init()
 
 void barrier_push_epoch(unsigned int stream_id, unsigned int epoch_id)
 {
-	ASSERT(stream_id > 0 && stream_id < 2);
+	ASSERT(stream_id > 0 && stream_id <= 2);
 
 	BARRIER_STREAM_LIST* p_stream = &g_barrierContext.stream[stream_id-1];
 
@@ -122,11 +122,11 @@ void barrier_push_epoch(unsigned int stream_id, unsigned int epoch_id)
 
 unsigned int barrier_pop_epoch(unsigned int stream_id)
 {
-	ASSERT(stream_id > 0 && stream_id < 2);
+	ASSERT(stream_id > 0 && stream_id <= 2);
 
 	BARRIER_STREAM_LIST* p_stream = &g_barrierContext.stream[stream_id-1];
 
-	ASSERT(p_stream->count == 0);
+	ASSERT(p_stream->count > 0);
 
 	unsigned int epoch_id = p_stream->epoch_list[p_stream->head_idx];
 
@@ -138,7 +138,7 @@ unsigned int barrier_pop_epoch(unsigned int stream_id)
 
 unsigned int barrier_get_epoch_count(unsigned int stream_id)
 {
-	ASSERT(stream_id > 0 && stream_id < 2);
+	ASSERT(stream_id > 0 && stream_id <= 2);
 
 	BARRIER_STREAM_LIST* p_stream = &g_barrierContext.stream[stream_id-1];
 

@@ -277,6 +277,13 @@ void EvictDataBufEntry(unsigned int originReqSlotTag)
 		SelectLowLevelReqQ(reqSlotTag);
 
 		dataBufMapPtr->dataBuf[dataBufEntry].dirty = DATA_BUF_CLEAN;
+
+#if (SUPPORT_BARRIER_FTL == 1)
+		dataBufMapPtr->dataBuf[dataBufEntry].stream_id1 = INVALID_STREAM_ID;
+		dataBufMapPtr->dataBuf[dataBufEntry].epoch_id1 = INVALID_EPOCH_ID;
+		dataBufMapPtr->dataBuf[dataBufEntry].stream_id2 = INVALID_STREAM_ID;
+		dataBufMapPtr->dataBuf[dataBufEntry].epoch_id2 = INVALID_EPOCH_ID;
+#endif
 	}
 }
 
@@ -498,7 +505,7 @@ void ReqTransSliceToLowLevel()
 		if(reqPoolPtr->reqPool[reqSlotTag].reqCode  == REQ_CODE_WRITE)
 		{
 			dataBufMapPtr->dataBuf[dataBufEntry].dirty = DATA_BUF_DIRTY;
-#if (SUPPROT_BARRIER_FTL == 1)
+#if (SUPPORT_BARRIER_FTL == 1)
 			dataBufMapPtr->dataBuf[dataBufEntry].stream_id1 = reqPoolPtr->reqPool[reqSlotTag].stream_id1;
 			dataBufMapPtr->dataBuf[dataBufEntry].stream_id2 = reqPoolPtr->reqPool[reqSlotTag].stream_id2;
 			dataBufMapPtr->dataBuf[dataBufEntry].epoch_id1 = reqPoolPtr->reqPool[reqSlotTag].epoch_id1;
