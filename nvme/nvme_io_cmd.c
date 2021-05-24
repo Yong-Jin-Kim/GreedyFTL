@@ -57,6 +57,7 @@
 #include "nvme.h"
 #include "host_lld.h"
 #include "nvme_io_cmd.h"
+#include "nvme_main.h"
 
 #include "../ftl_config.h"
 #include "../request_transform.h"
@@ -143,7 +144,29 @@ static void _handle_nvme_io_write(unsigned int cmdSlotTag, NVME_IO_COMMAND *nvme
 
 static void _handle_nvme_io_flush(unsigned int cmdSlotTag)
 {
+#if (SUPPORT_BARRIER_FTL == 0)
 	FlushWriteDataToNand();
+#else
+	// SP: flush write data with barrier flag.
+	unsigned int numFlushEpochCount = barrier_get_epoch_count(1);
+	unsigned int curEpochId;
+
+	while (0 < numFlushEpochCount)
+	{
+		curEpochId = barrier_pop_epoch(1);
+		xil_printf("\r\n[IF] str1, epoch:%u\r\n", curEpochId);
+		FlushWriteDataToNand2(1, curEpochId);
+	}
+
+	numFlushEpochCount = barrier_get_epoch_count(2);
+
+	while (0 < numFlushEpochCount)
+	{
+		curEpochId = barrier_pop_epoch(2);
+		xil_printf("\r\n[IF] str2, epoch:%u\r\n", curEpochId);
+		FlushWriteDataToNand2(2, curEpochId);
+	}
+#endif
 }
 
 void handle_nvme_io_cmd(NVME_COMMAND *nvmeCmd)

@@ -54,6 +54,11 @@
 // SP: refactoring this
 #define SUPPORT_BARRIER_FTL			(1)
 
+#if (SUPPORT_BARRIER_FTL == 1)
+#define INVALID_EPOCH_ID			(0)
+#define INVALID_STREAM_ID			(0)
+#endif
+
 #define MAX_NUM_OF_IO_SQ	8
 #define MAX_NUM_OF_IO_CQ	8
 
@@ -855,6 +860,21 @@ typedef struct _NVME_STATUS
 	NVME_IO_SQ_STATUS ioSqInfo[MAX_NUM_OF_IO_SQ];
 	NVME_IO_CQ_STATUS ioCqInfo[MAX_NUM_OF_IO_CQ];
 } NVME_CONTEXT;
+
+typedef struct _BARRIER_STREAM_LIST
+{
+	unsigned short head_idx;
+	unsigned short tail_idx;
+	unsigned int count;
+	// epoch list to be flushed (barrier flag received)
+	unsigned short epoch_list[256]; // SP: maximum entries case?
+} BARRIER_STREAM_LIST;
+
+typedef struct _BARRIER_CONTEXT
+{
+	BARRIER_STREAM_LIST stream[2];
+} BARRIER_CONTEXT;
+
 
 
 

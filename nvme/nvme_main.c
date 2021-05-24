@@ -73,6 +73,78 @@
 
 volatile NVME_CONTEXT g_nvmeTask;
 
+BARRIER_CONTEXT g_barrierContext;
+
+void barrier_init()
+{
+	BARRIER_STREAM_LIST* p_stream = &g_barrierContext.stream[0];
+
+	p_stream->head_idx = 0;
+	p_stream->tail_idx = 0;
+
+	p_stream->count = 0;
+
+	for (unsigned int idx = 0; idx < 256; idx++)
+	{
+		p_stream->epoch_list[idx] = INVALID_EPOCH_ID;
+	}
+
+	p_stream = &g_barrierContext.stream[1];
+
+	p_stream->head_idx = 0;
+	p_stream->tail_idx = 0;
+
+	p_stream->count = 0;
+
+	for (unsigned int idx = 0; idx < 256; idx++)
+	{
+		p_stream->epoch_list[idx] = INVALID_EPOCH_ID;
+	}
+}
+
+void barrier_push_epoch(unsigned int stream_id, unsigned int epoch_id)
+{
+	ASSERT(stream_id > 0 && stream_id < 2);
+
+	BARRIER_STREAM_LIST* p_stream = &g_barrierContext.stream[stream_id-1];
+
+	if (p_stream->count > 256)
+	{
+		// SP: handling list full case.
+		ASSERT(FALSE);
+	}
+
+	p_stream->epoch_list[p_stream->tail_idx] = epoch_id;
+
+	p_stream->tail_idx = (p_stream->tail_idx+1)%256;
+	p_stream->count++;
+}
+
+unsigned int barrier_pop_epoch(unsigned int stream_id)
+{
+	ASSERT(stream_id > 0 && stream_id < 2);
+
+	BARRIER_STREAM_LIST* p_stream = &g_barrierContext.stream[stream_id-1];
+
+	ASSERT(p_stream->count == 0);
+
+	unsigned int epoch_id = p_stream->epoch_list[p_stream->head_idx];
+
+	p_stream->head_idx = (p_stream->head_idx+1)%256;
+	p_stream->count--;
+
+	return epoch_id;
+}
+
+unsigned int barrier_get_epoch_count(unsigned int stream_id)
+{
+	ASSERT(stream_id > 0 && stream_id < 2);
+
+	BARRIER_STREAM_LIST* p_stream = &g_barrierContext.stream[stream_id-1];
+
+	return p_stream->count;
+}
+
 void nvme_main()
 {
 	unsigned int exeLlr;
@@ -82,6 +154,10 @@ void nvme_main()
 	xil_printf("!!! Wait until FTL reset complete !!! \r\n");
 
 	InitFTL();
+
+#if (SUPPORT_BARRIER_FTL == 1)
+	barrier_init();
+#endif
 
 	xil_printf("\r\nFTL reset complete!!! \r\n");
 	xil_printf("Turn on the host PC \r\n");
@@ -114,7 +190,29 @@ void nvme_main()
 
 			if (INTERNAL_FLUSH_PERIOD_MS == GET_TIME_MS(timeTickStart, timeTickEnd))
 			{
+#if (SUPPORT_BARRIER_FTL == 0)
 				FlushWriteDataToNand();
+#else
+				// SP: flush write data with barrier flag.
+				unsigned int numFlushEpochCount = barrier_get_epoch_count(1);
+				unsigned int curEpochId;
+
+				while (0 < numFlushEpochCount)
+				{
+					curEpochId = barrier_pop_epoch(1);
+					xil_printf("\r\n[IF] str1, epoch:%u\r\n", curEpochId);
+					FlushWriteDataToNand2(1, curEpochId);
+				}
+
+				numFlushEpochCount = barrier_get_epoch_count(2);
+
+				while (0 < numFlushEpochCount)
+				{
+					curEpochId = barrier_pop_epoch(2);
+					xil_printf("\r\n[IF] str2, epoch:%u\r\n", curEpochId);
+					FlushWriteDataToNand2(2, curEpochId);
+				}
+#endif
 
 				// SP: update start tick
 				XTime_GetTime(&timeTickStart);

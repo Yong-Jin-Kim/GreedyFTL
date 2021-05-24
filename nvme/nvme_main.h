@@ -53,6 +53,10 @@
 
 #define GET_TIME_MS(start, end)		(1000*(end-start)/COUNTS_PER_SECOND)
 
+void barrier_push_epoch(unsigned int stream_id, unsigned int epoch_id);
+unsigned int barrier_pop_epoch(unsigned int stream_id);
+unsigned int barrier_get_epoch_count(unsigned int stream_id);
+
 void nvme_main();
 
 #endif	//__NVME_MAIN_H_

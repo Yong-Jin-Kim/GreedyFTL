@@ -47,6 +47,11 @@
 #include <assert.h>
 #include "memory_map.h"
 
+#if (SUPPORT_BARRIER_FTL == 1)
+// SP: temp
+#include "nvme/nvme_main.h"
+#endif
+
 P_REQ_POOL reqPoolPtr;
 FREE_REQUEST_QUEUE freeReqQ;
 SLICE_REQUEST_QUEUE sliceReqQ;
@@ -373,28 +378,20 @@ void SelectiveGetFromNvmeDmaReqQ(unsigned int reqSlotTag)
 	nvmeDmaReqQ.reqCnt--;
 
 #if (SUPPORT_BARRIER_FTL == 1)
-	// TODO:
 	if (REQ_CODE_RxDMA == reqPoolPtr->reqPool[reqSlotTag].reqCode)
 	{
 		if (0 != reqPoolPtr->reqPool[reqSlotTag].barrier_flag1)
 		{
-				// flush data buffers (stream_id1, current epoch id)
-			FlushWriteDataToNand2(reqPoolPtr->reqPool[reqSlotTag].stream_id1, reqPoolPtr->reqPool[reqSlotTag].epoch_id1);
+			// add barrier list (stream_id1, current epoch id)
+			barrier_push_epoch(reqPoolPtr->reqPool[reqSlotTag].stream_id1, reqPoolPtr->reqPool[reqSlotTag].epoch_id1);
 		}
 
 		if (0 != reqPoolPtr->reqPool[reqSlotTag].barrier_flag2)
 		{
-				// flush data buffers (stream_id1, current epoch id)
-			FlushWriteDataToNand2(reqPoolPtr->reqPool[reqSlotTag].stream_id2, reqPoolPtr->reqPool[reqSlotTag].epoch_id2);
+			// add barrier list (stream_id1, current epoch id)
+			barrier_push_epoch(reqPoolPtr->reqPool[reqSlotTag].stream_id2, reqPoolPtr->reqPool[reqSlotTag].epoch_id2);
 		}
 	}
-	// if (this req was write dma)
-	// and
-		// if (cur slot is last data dma)
-
-	// check if need to flush or not.
-	// if need to flush write data of current epoch id,
-	// adding parameter stream_ids, epoch_ids into data buffer entry
 #endif
 
 	PutToFreeReqQ(reqSlotTag);

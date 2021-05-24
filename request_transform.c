@@ -307,7 +307,6 @@ void FlushWriteDataToNand2(unsigned int stream_id, unsigned int epoch_id)
 		if ((dataBufMapPtr->dataBuf[entryIteration].dirty == DATA_BUF_DIRTY)
 				&&(1 == needToFlush))
 		{
-			if ((dataBufMapPtr->dataBuf[entryIteration].dirty == DATA_BUF_DIRTY))
 			// Put to the Tail of LRU list
 			if(entryIteration != dataBufLruList.tailEntry)
 			{
@@ -352,6 +351,13 @@ void FlushWriteDataToNand2(unsigned int stream_id, unsigned int epoch_id)
 			SelectLowLevelReqQ(reqSlotTag);
 
 			dataBufMapPtr->dataBuf[entryIteration].dirty = DATA_BUF_CLEAN;
+
+#if (SUPPORT_BARRIER_FTL ==1)
+			dataBufMapPtr->dataBuf[entryIteration].stream_id1 = INVALID_STREAM_ID;
+			dataBufMapPtr->dataBuf[entryIteration].epoch_id1 = INVALID_EPOCH_ID;
+			dataBufMapPtr->dataBuf[entryIteration].stream_id2 = INVALID_STREAM_ID;
+			dataBufMapPtr->dataBuf[entryIteration].epoch_id2 = INVALID_EPOCH_ID;
+#endif
 		}
 	}
 
