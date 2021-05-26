@@ -103,6 +103,15 @@ void InitReqPool()
 		reqPoolPtr->reqPool[reqSlotTag].nextBlockingReq = REQ_SLOT_TAG_NONE;
 		reqPoolPtr->reqPool[reqSlotTag].prevReq = reqSlotTag - 1;
 		reqPoolPtr->reqPool[reqSlotTag].nextReq = reqSlotTag + 1;
+#if (SUPPORT_BARRIER_FTL == 1)
+		reqPoolPtr->reqPool[reqSlotTag].stream_id1 = INVALID_STREAM_ID;
+		reqPoolPtr->reqPool[reqSlotTag].epoch_id1 = INVALID_EPOCH_ID;
+		reqPoolPtr->reqPool[reqSlotTag].stream_id2 = INVALID_STREAM_ID;
+		reqPoolPtr->reqPool[reqSlotTag].epoch_id2 = INVALID_EPOCH_ID;
+
+		reqPoolPtr->reqPool[reqSlotTag].barrier_flag1 = 0;
+		reqPoolPtr->reqPool[reqSlotTag].barrier_flag1 = 0;
+#endif
 	}
 
 	reqPoolPtr->reqPool[0].prevReq = REQ_SLOT_TAG_NONE;
@@ -116,6 +125,14 @@ void InitReqPool()
 
 void PutToFreeReqQ(unsigned int reqSlotTag)
 {
+#if (SUPPORT_BARRIER_FTL == 1)
+	reqPoolPtr->reqPool[reqSlotTag].stream_id1 = INVALID_STREAM_ID;
+	reqPoolPtr->reqPool[reqSlotTag].epoch_id1 = INVALID_EPOCH_ID;
+	reqPoolPtr->reqPool[reqSlotTag].stream_id2 = INVALID_STREAM_ID;
+	reqPoolPtr->reqPool[reqSlotTag].epoch_id2 = INVALID_EPOCH_ID;
+	reqPoolPtr->reqPool[reqSlotTag].barrier_flag1 = 0;
+	reqPoolPtr->reqPool[reqSlotTag].barrier_flag1 = 0;
+#endif
 	if(freeReqQ.tailReq != REQ_SLOT_TAG_NONE)
 	{
 		reqPoolPtr->reqPool[reqSlotTag].prevReq = freeReqQ.tailReq;

@@ -187,13 +187,14 @@ void nvme_main()
 
 			// SP: update current tick
 			XTime_GetTime(&timeTickEnd);
-
+#if 0
 			if (INTERNAL_FLUSH_PERIOD_MS == GET_TIME_MS(timeTickStart, timeTickEnd))
 			{
 #if (SUPPORT_BARRIER_FTL == 0)
 				FlushWriteDataToNand();
 #else
 				// SP: flush write data with barrier flag.
+
 				unsigned int numFlushEpochCount = barrier_get_epoch_count(1);
 				unsigned int curEpochId;
 
@@ -217,6 +218,7 @@ void nvme_main()
 				// SP: update start tick
 				XTime_GetTime(&timeTickStart);
 			}
+#endif
 		}
 		else if(g_nvmeTask.status == NVME_TASK_WAIT_CC_EN)
 		{
